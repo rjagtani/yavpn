@@ -132,3 +132,29 @@ we find the threshold where performance decrease rapidly.
 
 ### Timeline
 TODO (We will decide on this together probably on Friday after class)
+
+Feb 15 ~ 23 Reading Break : 
+- Set up lab environment
+- Implement a Simple Server for only receiving connections
+
+Feb 23 ~ Mar 1
+- Implement Client with tunnel set up.
+
+Mar 1 ~ Mar 10
+- Implement Server forwarding and response 
+
+Mar 10 ~ Mar 19
+- End to End test, bug fixes, 
+
+Mar 20
+- Milestone Presentation
+
+Mar 21 ~ 28
+- Extension Point: Heartbeat 
+
+Mar 28 ~ Apr 7
+- Extension Point: Encryption
+
+Apr 8
+Final Project Demo
+
