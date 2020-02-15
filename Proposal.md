@@ -21,9 +21,20 @@ client perform the same reverse process to send it back.
 
 As for the tunnel protocol, we would choose from ICMP, IP in IP, L2TP, and PPTP protocols, which present 
 good performance in the existing VPNs. 
+
 #### Related works
-OpenVPN is a open-source VPN implementation supports both `udp` and `tcp` mode.
-(TODO)
+
+There are many other open source ongoing VPN projects, such as [StrongSwan](https://github.com/strongswan/strongswan), [SoftEtherVPN](https://github.com/SoftEtherVPN/SoftEtherVPN) and [OpenVPN]https://github.com/OpenVPN/openvpn), that we may refer to. 
+StrongSwan is one of the most classic VPN project basd on IPsev protocol. 
+But as IPS always tends to block IPsec protocol, people start build VPN based on more commonly used protocols. 
+For example, OpenVPN runs on TCP or UDP protocol instead of IPsec. 
+It uses OPENSSL to encrypt all the data and the authenication process. 
+It offers three ways to authenticate each other: pre-shared secret keys, certificates and username/password.
+Further on, SoftEtherVPN offers more ways to build up a VPN. 
+It can set up a VPN based on Ethernet over HTTPS, L2TP over IPsec, PPP over HTTPS and IP over TCP/UDO (OpenVPN Protocol).
+There are also many ditributed VPN projects using peer-to-peer technology, such as [badVPN](https://github.com/shadowsocks/badvpn), in which the data sent between clients do not need go through the center server. 
+There are also decentralized VPN projects, such as [radvpn](https://github.com/mehrdadrad/radvpn), who dose not need a central point.
+
 
 ### Hypotheses
 VPN server and VPN client program. The user connects to the VPN server through the tunnel created by the 
