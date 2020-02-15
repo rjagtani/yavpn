@@ -24,7 +24,7 @@ good performance in the existing VPNs.
 
 #### Related works
 
-There are many other open source ongoing VPN projects, such as [StrongSwan](https://github.com/strongswan/strongswan), [SoftEtherVPN](https://github.com/SoftEtherVPN/SoftEtherVPN) and [OpenVPN]https://github.com/OpenVPN/openvpn), that we may refer to. 
+There are many other open source ongoing VPN projects, such as [StrongSwan](https://github.com/strongswan/strongswan), [SoftEtherVPN](https://github.com/SoftEtherVPN/SoftEtherVPN) and [OpenVPN](https://github.com/OpenVPN/openvpn), that we may refer to. 
 StrongSwan is one of the most classic VPN project basd on IPsev protocol. 
 But as IPS always tends to block IPsec protocol, people start build VPN based on more commonly used protocols. 
 For example, OpenVPN runs on TCP or UDP protocol instead of IPsec. 
