@@ -138,11 +138,9 @@ We will launch X client with Y data rate, and test the average performance until
 we find the threshold where performance decrease rapidly.
 
 #### Speed/Latency
-(TODO)
-
+We will measure the speed and latency for vising a list of different websites both when we are in the VPN or not so that we will know the overhead our system adds to the network transfer.
 
 ### Timeline
-TODO (We will decide on this together probably on Friday after class)
 
 Feb 15 ~ 23 Reading Break : 
 - Set up lab environment
