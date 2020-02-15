@@ -31,7 +31,7 @@ For example, OpenVPN runs on TCP or UDP protocol instead of IPsec.
 It uses OPENSSL to encrypt all the data and the authenication process. 
 It offers three ways to authenticate each other: pre-shared secret keys, certificates and username/password.
 Further on, SoftEtherVPN offers more ways to build up a VPN. 
-It can set up a VPN based on Ethernet over HTTPS, L2TP over IPsec, PPP over HTTPS and IP over TCP/UDO (OpenVPN Protocol).
+It can set up a VPN based on Ethernet over HTTPS, L2TP over IPsec, PPP over HTTPS and IP over TCP/UDP (OpenVPN Protocol).
 There are also many ditributed VPN projects using peer-to-peer technology, such as [badVPN](https://github.com/shadowsocks/badvpn), in which the data sent between clients do not need go through the center server. 
 There are also decentralized VPN projects, such as [radvpn](https://github.com/mehrdadrad/radvpn), who dose not need a central point.
 
