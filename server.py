@@ -11,18 +11,21 @@ from threading import Thread
 
 import config
 import utils
+import packet
 
 DEBUG = config.DEBUG
 
 class Server:
     def __init__(self):
-        super().__init__()
         self.sessions = []
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp.bind(config.BIND_ADDRESS)
+
+        # selector to listen all 'coming in' events
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.udp, selectors.EVENT_READ, data="udp")
-        
+
+        self.packetManager = packet.PacketManager()
         print('Server listen on %s:%s' % (config.BIND_ADDRESS))
 
     def getTunfdByAddress(self, address):
@@ -37,11 +40,24 @@ class Server:
                 return session["address"]
         return -1
 
+    def getSocketByTunfd(self, tunfd):
+        for session in self.sessions:
+            if session["tunfd"] == tunfd:
+                return session["socket"]
+        return -1
+
+    def getAddressBySocket(self, socket):
+        for session in self.sessions:
+            if session["socket"] == socket:
+                return session["address"]
+        return -1
+
     def createSession(self, address):
         try:
             tunfd, tunName = utils.createTunnel()
             tunAddress = config.IPRANGE.pop(0)
             utils.startTunnel(tunName, config.LOCAL_IP, tunAddress)
+            rawSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP)
         except OSError:
             print("Error when create new session with address: ", address)
             return False
@@ -52,29 +68,38 @@ class Server:
                 "tunfd": tunfd,
                 'address': address,
                 'tunAddress': tunAddress,
+                'socket': rawSocket, 
                 'lastTime': time.time()
             }
         )
+        # register tunnel and raw socket
         self.selector.register(tunfd, selectors.EVENT_READ, data=tunName)
+        self.selector.register(rawSocket, selectors.EVENT_READ, data="raw")
+
         reply = "%s;%s" % (tunAddress, config.LOCAL_IP)
         self.udp.sendto(reply.encode(), address)
         return True
 
     def deleteSessionByTunfd(self, tunfd):
-        try:
-            os.close(tunfd)
-        except OSError:
-            return False
-        
         for session in self.sessions:
             if session['tunfd'] == tunfd:
-                self.sessions.remove(session)
-                config.IPRANGE.append(session['tunAddress'])
+                del_session = session
+        
+        try:
+            os.close(tunfd)
+            del_session['socket'].close()
+            
+        except OSError:
+            return False
+
+        self.sessions.remove(del_session)
+        config.IPRANGE.append(del_session['tunAddress'])
         
         try:
             self.selector.unregister(tunfd)
+            self.selector.unregister(del_session['socket'])
         except Exception:
-            print("Try to unregister not registered tunnel: ", tunfd)
+            print("Fail to unregister file: ", tunfd, del_session['socket'])
             return False
         
         return True
@@ -115,6 +140,34 @@ class Server:
             if DEBUG:
                 print("Client %s:%s connection failed!" % address)
 
+    def sendToAppServer(self, data, tunfd):
+        rawSocket = self.getSocketByTunfd(tunfd)
+        if rawSocket == -1:
+            return False
+
+        # refactoring packet
+        packet, dst = self.packetManager.refactorSourceIP(data)
+        if packet is None:
+            return False
+        else:
+            # send packet through the raw socket
+            rawSocket.sendto(packet, (dst, 0))
+            return True
+
+    def sendToClient(self, data, address):
+        if address == -1:
+            return False
+
+        # refactoring packet
+        packet = self.packetManager.refactorDestIP(data, address[0])
+        if packet is None:
+            return False
+        else:
+            # send packet through the udp socket
+            self.udp.sendto(packet, address)
+            return True
+
+
     def runService(self):
         # start a thread for garbage collecting
         collectorThread = Thread(target=self.garbageCollector, daemon=True)
@@ -125,6 +178,7 @@ class Server:
             for key, mask in events:
 
                 if key.data == "udp":
+                    # receive data from udp socket
                     data, address = self.udp.recvfrom(config.BUFFER_SIZE)
                     if DEBUG: 
                         print(utils.getCurrentTime() + 'from (%s:%s)' % (address, repr(data)))
@@ -132,17 +186,42 @@ class Server:
                     try:
                         tunfd = self.getTunfdByAddress(address)
                         try:
+                            # data is handled by the kernel
                             os.write(tunfd, data)
                         except OSError:
-                            if not self.authenticate(tunfd, data, address):
-                                continue    
-                            self.createSession(address)
-                            if DEBUG:
-                                print('Client %s:%s connect successful' % (address))
+                            # data is not recognized by the tunnel or 
+                            # tunnel does not exist
+                            if self.authenticate(tunfd, data, address):  
+                                # authentication succeeds
+                                if tunfd == -1:
+                                    # create a new session      
+                                    self.createSession(address)
+                                    if DEBUG:
+                                        print('Client %s:%s connect successful' % (address))
+
+                            else:
+                                if data == b'\x00' or data == b'e' or tunfd == -1:
+                                    continue
+                                # resend to the App Server
+                                if self.sendToAppServer(data, tunfd):
+                                    if DEBUG:
+                                        print(utils.getCurrentTime() + 'resends packet to App Server: %s' % (repr(data)))
+
                     except OSError:
                         if DEBUG:
                             print("Error when try to write to tunfd: ", tunfd)
                         continue
+                
+                elif key.data == "raw":
+                    # receive packets from the application server
+                    rawSocket = key.fileobj
+                    data, address = rawSocket.recvfrom(config.BUFFER_SIZE)
+
+                    # resend data to the client
+                    clientAddr = self.getAddressBySocket(rawSocket)
+                    if self.sendToClient(data, clientAddr):
+                        if DEBUG:
+                            print(utils.getCurrentTime() + 'resends packet to Client: %s' % (repr(data)))
 
                 else:
                     try: 
