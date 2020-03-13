@@ -6,17 +6,17 @@ class RouteManager():
     def __init__(self):
         self.IPRoute = IPRoute()
         # get local NIC information
-        self.__getDefaultNIC()
+        self.__getDefaultNetworkInfo()
         
         pass
 
-    def __getDefaultNIC(self):
+    def __getDefaultNetworkInfo(self):
         self.devs = [link.get_attr('IFLA_IFNAME') for link in self.IPRoute.get_links()]
         
-        for idx, route in enumerate(self.IPRoute.get_routes()):
+        for route in self.IPRoute.get_routes():
             if route.get_attr('RTA_DST') is None:
                 # default gw and NIC
-                self.NIC = self.devs[idx-1]
+                self.NIC = self.devs[route.get_attr('RTA_OIF') - 1]
                 self.defaultGW = route.get_attr('RTA_GATEWAY')
 
     def restoreDefaultGW(self):

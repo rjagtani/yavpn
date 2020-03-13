@@ -14,13 +14,13 @@ from route import RouteManager
 DEBUG = config.DEBUG
 
 class Client():
-    def __init__(self, routeManager):
+    def __init__(self):
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp.settimeout(5)
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.udp, selectors.EVENT_READ, data="udp")
         self.to = SERVER_ADDRESS
-        self.routeManager = routeManager
+        self.routeManager = RouteManager()
 
     def connect(self):
         self.udp.sendto(config.PASSWORD, self.to)
@@ -37,7 +37,7 @@ class Client():
 
             # modify routing table
             self.routeManager.changeDefaultGW(peerIP, tunName)
-            self.routeManager.addHostRoute(self.to[0], dev="enp0s3")
+            self.routeManager.addHostRoute(self.to[0])
 
             return tunfd
 
@@ -96,17 +96,19 @@ class Client():
                     except OSError:
                         continue
 
+    def restoreConf(self):
+        self.routeManager.restoreDefaultGW()
 
 
 if __name__ == '__main__':
     try:
         SERVER_ADDRESS = (sys.argv[1], int(sys.argv[2]))
-        RM = RouteManager()
-        Client(RM).runService()
+        client = Client()
+        client.runService()
     except IndexError:
         print('Usage: %s [remote_ip] [remote_port]' % sys.argv[0])
     except KeyboardInterrupt:
         if DEBUG:
-            print('Restoring Default Gateway')
-        RM.restoreDefaultGW()
+            print('Restoring Default Configuration... ')
+        client.restoreConf()
         print('Closing vpn client ...')

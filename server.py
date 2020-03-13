@@ -57,7 +57,7 @@ class Server:
             tunfd, tunName = utils.createTunnel()
             tunAddress = config.IPRANGE.pop(0)
             utils.startTunnel(tunName, config.LOCAL_IP, tunAddress)
-            rawSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IP)
+            rawSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IPV4)
         except OSError:
             print("Error when create new session with address: ", address)
             return False
@@ -115,8 +115,7 @@ class Server:
                 if (time.time() - session["lastTime"]) > config.EXPIRE_TIME:
                     # expire if no response for 1 minute
                     self.deleteSessionByTunfd(session['tunfd'])
-                    if DEBUG:
-                        print('Session: %s:%s expired!' % session['address'])
+                    if DEBUG: print('Session: %s:%s expired!' % session['address'])
             time.sleep(config.COLLECT_CYCLE)
 
     def authenticate(self, tunfd, data, address):
@@ -130,15 +129,13 @@ class Server:
         elif data == b'e':
             # close session
             if self.deleteSessionByTunfd(tunfd):
-                if DEBUG:
-                    print("Client %s:%s disconnect" % address)
+                if DEBUG: print("Client %s:%s disconnect" % address)
             return False
         if data == config.PASSWORD:
             return True
 
         else:
-            if DEBUG:
-                print("Client %s:%s connection failed!" % address)
+            if DEBUG:  print("Client %s:%s connection failed!" % address)
 
     def sendToAppServer(self, data, tunfd):
         rawSocket = self.getSocketByTunfd(tunfd)
@@ -159,7 +156,7 @@ class Server:
             return False
 
         # refactoring packet
-        packet = self.packetManager.refactorDestIP(data, address[0])
+        packet = self.packetManager.refactorDstIP(data, address[0])
         if packet is None:
             return False
         else:
@@ -180,48 +177,48 @@ class Server:
                 if key.data == "udp":
                     # receive data from udp socket
                     data, address = self.udp.recvfrom(config.BUFFER_SIZE)
-                    if DEBUG: 
-                        print(utils.getCurrentTime() + 'from (%s:%s)' % (address, repr(data)))
+                    pdata = data[4:]
+                    if DEBUG: print(utils.getCurrentTime() + 'from (%s:%s)' % (address, repr(data)))
                     
-                    try:
-                        tunfd = self.getTunfdByAddress(address)
+                    # resends the packet to App Server or Tunnel
+                    srcIP, dstIP = self.packetManager.getSrcIPandDstIP(pdata) 
+                    print("srcIP, dstIP: ", srcIP, dstIP)
+
+                    if dstIP is None or dstIP == config.LOCAL_IP:
+                        # sends to Tunnel
                         try:
-                            # data is handled by the kernel
-                            os.write(tunfd, data)
-                        except OSError:
-                            # data is not recognized by the tunnel or 
-                            # tunnel does not exist
-                            if self.authenticate(tunfd, data, address):  
-                                # authentication succeeds
-                                if tunfd == -1:
-                                    # create a new session      
+                            tunfd = self.getTunfdByAddress(address)
+                            try:
+                                # data is handled by the kernel
+                                print("Write to Tunnel")
+                                os.write(tunfd, data)
+                            except OSError:
+                                # data is not recognized by the tunnel or tunnel does not exist
+                                if self.authenticate(tunfd, data, address) and tunfd == -1:  
+                                    # authentication succeeds, create a new session      
                                     self.createSession(address)
-                                    if DEBUG:
-                                        print('Client %s:%s connect successful' % (address))
+                                    if DEBUG: print('Client %s:%s connect successful' % (address))
+                                    
+                        except OSError:
+                            if DEBUG: print("Error when try to write to tunfd: ", tunfd)
+                            continue
 
-                            else:
-                                if data == b'\x00' or data == b'e' or tunfd == -1:
-                                    continue
-                                # resend to the App Server
-                                if self.sendToAppServer(data, tunfd):
-                                    if DEBUG:
-                                        print(utils.getCurrentTime() + 'resends packet to App Server: %s' % (repr(data)))
+                    else:
+                        # resend to the App Server
+                        if self.sendToAppServer(pdata, tunfd):
+                            if DEBUG: print(utils.getCurrentTime() + 'resends packet to App Server: %s' % (repr(data)))
 
-                    except OSError:
-                        if DEBUG:
-                            print("Error when try to write to tunfd: ", tunfd)
-                        continue
                 
                 elif key.data == "raw":
                     # receive packets from the application server
                     rawSocket = key.fileobj
                     data, address = rawSocket.recvfrom(config.BUFFER_SIZE)
+                    if DEBUG: print("Raw socket get packet:", repr(data))
 
                     # resend data to the client
                     clientAddr = self.getAddressBySocket(rawSocket)
                     if self.sendToClient(data, clientAddr):
-                        if DEBUG:
-                            print(utils.getCurrentTime() + 'resends packet to Client: %s' % (repr(data)))
+                        if DEBUG: print(utils.getCurrentTime() + 'resends packet to Client: %s' % (repr(data)))
 
                 else:
                     try: 
@@ -229,8 +226,7 @@ class Server:
                         address = self.getAddressByTunfd(tunfd)
                         data = os.read(tunfd, config.BUFFER_SIZE)
                         self.udp.sendto(data, address)
-                        if DEBUG:
-                            print(utils.getCurrentTime() + 'to (%s:%s)' % (address, repr(data)))
+                        if DEBUG: print(utils.getCurrentTime() + 'to (%s:%s)' % (address, repr(data)))
                     except Exception:
                         continue
 
