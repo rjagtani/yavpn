@@ -5,7 +5,8 @@ class PacketManager():
     def __init__(self):
         # get hostname
         self.host = socket.gethostbyname(socket.gethostname())
-        self.host = "192.168.1.94"
+        # TODO which line should be in effect
+        self.host = "192.168.1.72"
 
     def getSrcIPandDstIP(self, data):
         if len(data) == 0:
@@ -43,7 +44,9 @@ class PacketManager():
         except Exception:
             print("Fail to dest of the IP package: ", repr(data))
             return None
-        
+
+
         pck['IP'].dst = dst
+        pck.show()
         return raw(pck)
 
