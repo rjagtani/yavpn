@@ -18,5 +18,6 @@ def createTunnel(tunName = 'tun%d', tunMode = config.IFF_TUN):
     return tunfd, tunName
 
 def startTunnel(tunName, localIP, peerIP):
+    print("peer ip %s local ip %s", peerIP, localIP)
     os.popen('ifconfig %s %s dstaddr %s mtu %s up' %
                 (tunName, localIP, peerIP, config.MTU)).read()

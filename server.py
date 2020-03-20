@@ -57,11 +57,15 @@ class Server:
             tunfd, tunName = utils.createTunnel()
             tunAddress = config.IPRANGE.pop(0)
             utils.startTunnel(tunName, config.LOCAL_IP, tunAddress)
-            rawSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_IPV4)
-        except OSError:
+            rawSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
+            rawSocket.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+            #rawSocket.setblocking(False)
+        except OSError as e:
             print("Error when create new session with address: ", address)
+            print("Error message " + str(e))
             return False
-        
+
+
         self.sessions.append(
             {
                 "tunName": tunName,
@@ -184,10 +188,10 @@ class Server:
                     srcIP, dstIP = self.packetManager.getSrcIPandDstIP(pdata) 
                     print("srcIP, dstIP: ", srcIP, dstIP)
 
+                    tunfd = self.getTunfdByAddress(address)
                     if dstIP is None or dstIP == config.LOCAL_IP:
                         # sends to Tunnel
                         try:
-                            tunfd = self.getTunfdByAddress(address)
                             try:
                                 # data is handled by the kernel
                                 print("Write to Tunnel")
@@ -205,6 +209,7 @@ class Server:
 
                     else:
                         # resend to the App Server
+
                         if self.sendToAppServer(pdata, tunfd):
                             if DEBUG: print(utils.getCurrentTime() + 'resends packet to App Server: %s' % (repr(data)))
 
@@ -213,7 +218,7 @@ class Server:
                     # receive packets from the application server
                     rawSocket = key.fileobj
                     data, address = rawSocket.recvfrom(config.BUFFER_SIZE)
-                    if DEBUG: print("Raw socket get packet:", repr(data))
+                    if DEBUG: print("Raw socket get packet:", (data))
 
                     # resend data to the client
                     clientAddr = self.getAddressBySocket(rawSocket)

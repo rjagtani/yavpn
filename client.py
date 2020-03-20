@@ -10,6 +10,7 @@ from threading import Thread
 import config
 import utils
 from route import RouteManager
+from packet import PacketManager
 
 DEBUG = config.DEBUG
 
@@ -18,9 +19,11 @@ class Client():
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp.settimeout(5)
         self.selector = selectors.DefaultSelector()
+        # TODO what does data="udp" mean
         self.selector.register(self.udp, selectors.EVENT_READ, data="udp")
         self.to = SERVER_ADDRESS
         self.routeManager = RouteManager()
+        self.packetManager = PacketManager()
 
     def connect(self):
         self.udp.sendto(config.PASSWORD, self.to)
@@ -28,6 +31,8 @@ class Client():
             #obtain tun IP address
             data, address = self.udp.recvfrom(config.BUFFER_SIZE)
             localIP, peerIP = data.decode().split(';')
+            self.localIP = localIP
+            self.peerIP = peerIP
 
             # create and register tunnel
             tunfd, tunName = utils.createTunnel()
@@ -36,6 +41,7 @@ class Client():
             utils.startTunnel(tunName, localIP, peerIP)
 
             # modify routing table
+            # TODO how does peerIP work in this scenario
             self.routeManager.changeDefaultGW(peerIP, tunName)
             self.routeManager.addHostRoute(self.to[0])
 
@@ -78,7 +84,14 @@ class Client():
             for key, mask in events:
                 if key.data == "udp":
                     data, address = self.udp.recvfrom(config.BUFFER_SIZE)
+                    srcIP, dstIP = self.packetManager.getSrcIPandDstIP(data)
+                    print("srcIP, dstIP: ", srcIP, dstIP)
+                    if dstIP is not None:
+                        data = self.packetManager.refactorDstIP(data, self.localIP)
+                        data = b"\x00\x00\x00\x00" + data
+
                     try:
+
                         os.write(self.tunfd, data)
                         if DEBUG:
                             print(utils.getCurrentTime() + 'from (%s:%s)' % (address, repr(data)))
