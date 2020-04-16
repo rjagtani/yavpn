@@ -12,10 +12,16 @@ from threading import Thread
 
 import config
 import utils
-import packet
+from route import RouteManager
+from packet import PacketManager
 
 
 DEBUG = config.DEBUG
+
+# Contants
+INVALID_ADDRESS = -1
+INVALID_TUN = -1
+INVALID_SOCKET = -1
 
 class Server:
     def __init__(self):
@@ -30,7 +36,9 @@ class Server:
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.udp, selectors.EVENT_READ, data="udp")
 
-        self.packetManager = packet.PacketManager()
+        self.packetManager = PacketManager()
+        self.routeManager = RouteManager()
+        self.hostIP = self.routeManager.gethostIP()
         print('Server listen on %s:%s' % (config.BIND_ADDRESS))
 
     # def initializeTcp(self):
@@ -46,25 +54,31 @@ class Server:
         for session in self.sessions:
             if session["address"] == address:
                 return session["tunfd"]
-        return -1
+        return INVALID_TUN
 
     def getAddressByTunfd(self, tunfd):
         for session in self.sessions:
             if session["tunfd"] == tunfd:
                 return session["address"]
-        return -1
+        return INVALID_ADDRESS
 
     def getSocketByTunfd(self, tunfd):
         for session in self.sessions:
             if session["tunfd"] == tunfd:
                 return session["socket"]
-        return -1
+        return INVALID_SOCKET
 
     def getAddressBySocket(self, socket):
         for session in self.sessions:
             if session["socket"] == socket:
                 return session["address"]
-        return -1
+        return INVALID_ADDRESS
+    
+    def getTunAddressByAddress(self, address):
+        for session in self.sessions:
+            if session["address"] == address:
+                return session["tunAddress"]
+        return INVALID_ADDRESS
 
     def createSession(self, address):
         try:
@@ -78,7 +92,6 @@ class Server:
             print("Error when create new session with address: ", address)
             print("Error message " + str(e))
             return False
-
 
         self.sessions.append(
             {
@@ -138,7 +151,7 @@ class Server:
 
     def authenticate(self, tunfd, data, address):
         if data == b'\x00':
-            if tunfd == -1:
+            if tunfd == INVALID_TUN:
                 # reconnect
                 self.udp_proxy.sendto(b'r', address)
             else:
@@ -155,13 +168,13 @@ class Server:
         else:
             if DEBUG:  print("Client %s:%s connection failed!" % address)
 
-    def sendToAppServer(self, data, tunfd):
+    def forwardToAppServer(self, data, tunfd):
         rawSocket = self.getSocketByTunfd(tunfd)
-        if rawSocket == -1:
+        if rawSocket == INVALID_SOCKET:
             return False
 
         # refactoring packet
-        packet, dst = self.packetManager.refactorSourceIP(data)
+        packet, _, dst = self.packetManager.refactorSourceIP(data, self.hostIP)
         if packet is None:
             return False
         else:
@@ -169,12 +182,13 @@ class Server:
             rawSocket.sendto(packet, (dst, 0))
             return True
 
-    def sendToClient(self, data, address):
-        if address == -1:
+    def forwardToClient(self, data, address):
+        if address == INVALID_ADDRESS:
             return False
 
         # refactoring packet
-        packet = self.packetManager.refactorDstIP(data, address[0])
+        tunAddress = self.getTunAddressByAddress(address)
+        packet, _, _ = self.packetManager.refactorDstIP(data, tunAddress)
         if packet is None:
             return False
         else:
@@ -195,57 +209,60 @@ class Server:
                 if key.data == "udp":
                     # receive data from udp socket
                     data, address = self.udp_proxy.recvfrom(config.BUFFER_SIZE)
-                    pdata = data[4:]
+
                     if DEBUG: print(utils.getCurrentTime() + 'from (%s:%s)' % (address, repr(data)))
                     
                     # resends the packet to App Server or Tunnel
-                    srcIP, dstIP = self.packetManager.getSrcIPandDstIP(pdata) 
+                    srcIP, dstIP = self.packetManager.getSrcIPandDstIP(data) 
                     print("srcIP, dstIP: ", srcIP, dstIP)
 
                     tunfd = self.getTunfdByAddress(address)
-                    if dstIP is None or dstIP == config.LOCAL_IP:
-                        # sends to Tunnel
+                    if dstIP == config.LOCAL_IP:
                         try:
-                            try:
-                                # data is handled by the kernel
-                                print("Write to Tunnel")
-                                os.write(tunfd, data)
-                            except OSError:
-                                # data is not recognized by the tunnel or tunnel does not exist
-                                if self.authenticate(tunfd, data, address) and tunfd == -1:  
-                                    # authentication succeeds, create a new session      
-                                    self.createSession(address)
-                                    if DEBUG: print('Client %s:%s connect successful' % (address))
-                                    
+                            # handle by TUN
+                            if DEBUG: print("Write to Tunnel")
+
+                            # add four bytes ethernet frame
+                            tdata = config.ETHERNET_FRAME_BYTES + data
+                            os.write(tunfd, tdata)
                         except OSError:
                             if DEBUG: print("Error when try to write to tunfd: ", tunfd)
                             continue
+                                
+                    elif dstIP is None:
+                        # control message, handled by the server
+                        print("Control Message")
+                        if self.authenticate(tunfd, data, address) and tunfd == -1:  
+                            # authentication succeeds, create a new session      
+                            self.createSession(address)
+                            if DEBUG: print('Client %s:%s connect successful' % (address))
 
                     else:
-                        # resend to the App Server
-
-                        if self.sendToAppServer(pdata, tunfd):
-                            if DEBUG: print(utils.getCurrentTime() + 'resends packet to App Server: %s' % (repr(data)))
-
+                        # forward to the App Server
+                        print("forward to App Server")
+                        if self.forwardToAppServer(data, tunfd):
+                            if DEBUG: print(utils.getCurrentTime() + 'forward packet to App Server: %s' % (repr(data)))
                 
                 elif key.data == "raw":
                     # receive packets from the application server
                     rawSocket = key.fileobj
                     data, address = rawSocket.recvfrom(config.BUFFER_SIZE)
 
-                    if DEBUG: print("Raw socket get packet:", (data))
-
                     # resend data to the client
                     clientAddr = self.getAddressBySocket(rawSocket)
-                    if self.sendToClient(data, clientAddr):
-                        if DEBUG: print(utils.getCurrentTime() + 'resends encrypted packet to Client: %s' % (repr(data)))
+                    if self.forwardToClient(data, clientAddr):
+                        if DEBUG: print(utils.getCurrentTime() + 'forward packet to Client: %s' % (repr(data)))
+                        pass
 
                 else:
                     try: 
                         tunfd = key.fileobj
                         address = self.getAddressByTunfd(tunfd)
                         data = os.read(tunfd, config.BUFFER_SIZE)
+                        # truncate four bytes ethernet frame
+                        data = data[4:]
                         self.udp_proxy.sendto(data, address)
+
                         if DEBUG: print(utils.getCurrentTime() + 'to (%s:%s)' % (address, repr(data)))
                     except Exception:
                         continue

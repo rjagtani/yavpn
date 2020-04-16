@@ -21,31 +21,33 @@ class Client():
         self.securityManager = SecurityManager(config.FERNET_KEY)
         self.udp_proxy = UdpProxy(self.udp, self.securityManager)
         self.selector = selectors.DefaultSelector()
-        # TODO what does data="udp" mean
         self.selector.register(self.udp, selectors.EVENT_READ, data="udp")
-        self.to = SERVER_ADDRESS
+        self.serverAddress = SERVER_ADDRESS
         self.routeManager = RouteManager()
         self.packetManager = PacketManager()
 
     def connect(self):
-        self.udp_proxy.sendto(config.PASSWORD, self.to)
+        self.udp_proxy.sendto(config.PASSWORD, self.serverAddress)
+
         try:
             #obtain tun IP address
             data, address = self.udp_proxy.recvfrom(config.BUFFER_SIZE)
             localIP, peerIP = data.decode().split(';')
-            self.localIP = localIP
-            self.peerIP = peerIP
+            self.localTunAddress = localIP
+            self.serverTunAddress = peerIP
 
             # create and register tunnel
             tunfd, tunName = utils.createTunnel()
             self.selector.register(tunfd, selectors.EVENT_READ, data = tunName)
             print('Local IP: %s, Peer IP: %s' % (localIP, peerIP))
             utils.startTunnel(tunName, localIP, peerIP)
+            time.sleep(1)
 
             # modify routing table
-            # TODO how does peerIP work in this scenario
+            NIC = self.routeManager.getNIC()
+            defaultGW = self.routeManager.getDefaultGW()
             self.routeManager.changeDefaultGW(peerIP, tunName)
-            self.routeManager.addHostRoute(self.to[0])
+            self.routeManager.addHostRoute(self.serverAddress[0], defaultGW, NIC)
 
             return tunfd
 
@@ -55,7 +57,8 @@ class Client():
     def keepAlive(self):
         while True:
             time.sleep(config.KEEPALIVE)
-            self.udp_proxy.sendto(b'\x00', self.to)
+            self.udp_proxy.sendto(b'\x00', self.serverAddress)
+
 
     def reconnect(self):
         self.selector.unregister(self.tunfd)
@@ -80,7 +83,8 @@ class Client():
                 events = self.selector.select(timeout=None)
             except KeyboardInterrupt:
                 # close connection
-                self.udp_proxy.sendto(b'e', self.to)
+                self.udp_proxy.sendto(b'e', self.serverAddress)
+
                 raise KeyboardInterrupt
 
             for key, mask in events:
@@ -88,13 +92,11 @@ class Client():
                     data, address = self.udp_proxy.recvfrom(config.BUFFER_SIZE)
                     srcIP, dstIP = self.packetManager.getSrcIPandDstIP(data)
                     print("srcIP, dstIP: ", srcIP, dstIP)
-                    if dstIP is not None:
-                        data = self.packetManager.refactorDstIP(data, self.localIP)
-                        data = b"\x00\x00\x00\x00" + data
 
                     try:
-
-                        os.write(self.tunfd, data)
+                        # add four bytes ethernet frame
+                        tdata = config.ETHERNET_FRAME_BYTES + data
+                        os.write(self.tunfd, tdata)
                         if DEBUG:
                             print(utils.getCurrentTime() + 'from (%s:%s)' % (address, repr(data)))
                     except OSError:
@@ -105,15 +107,21 @@ class Client():
                 else: # tunnel events
                     try:
                         data = os.read(self.tunfd, config.BUFFER_SIZE)
+                        # truncate four bytes ethernet frame
+                        data = data[4:]
+                        
+                        self.udp_proxy.sendto(data, self.serverAddress)
 
-                        self.udp_proxy.sendto(data, self.to)
                         if DEBUG:
-                            print(utils.getCurrentTime() + 'to (%s:%s)' % (self.to, repr(data)))
+                            print(utils.getCurrentTime() + 'to (%s:%s)' % (self.serverAddress, repr(data)))
                     except OSError:
                         continue
 
     def restoreConf(self):
-        self.routeManager.restoreDefaultGW()
+        NIC = self.routeManager.getNIC()
+        defaultGW = self.routeManager.getDefaultGW()
+        self.routeManager.changeDefaultGW(defaultGW, NIC)
+        self.routeManager.deleteHostRoute(self.serverAddress[0], defaultGW, NIC)
 
 
 if __name__ == '__main__':
