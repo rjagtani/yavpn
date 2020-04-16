@@ -7,12 +7,14 @@ import struct
 import socket
 import selectors
 from fcntl import ioctl
+from security import SecurityManager, UdpProxy
 from threading import Thread
 
 import config
 import utils
 from route import RouteManager
 from packet import PacketManager
+
 
 DEBUG = config.DEBUG
 
@@ -27,6 +29,9 @@ class Server:
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp.bind(config.BIND_ADDRESS)
 
+        # encryption
+        self.securityManager = SecurityManager(config.FERNET_KEY)
+        self.udp_proxy = UdpProxy(self.udp, self.securityManager)
         # selector to listen all 'coming in' events
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.udp, selectors.EVENT_READ, data="udp")
@@ -36,6 +41,15 @@ class Server:
         self.hostIP = self.routeManager.gethostIP()
         print('Server listen on %s:%s' % (config.BIND_ADDRESS))
 
+    # def initializeTcp(self):
+    #     ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    #     ssl_context.load_cert_chain('yavpn.pem', 'yavpn.key')
+    #     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    #     sock.bind(config.TCP_BIND_ADDRESS)
+    #     sock.listen(2)
+    #     secure_sock = ssl_context.wrap_socket(sock, server_side=True)
+    #     conn, address = secure_sock.accept()
+    #     return conn
     def getTunfdByAddress(self, address):
         for session in self.sessions:
             if session["address"] == address:
@@ -94,7 +108,7 @@ class Server:
         self.selector.register(rawSocket, selectors.EVENT_READ, data="raw")
 
         reply = "%s;%s" % (tunAddress, config.LOCAL_IP)
-        self.udp.sendto(reply.encode(), address)
+        self.udp_proxy.sendto(reply.encode(), address)
         return True
 
     def deleteSessionByTunfd(self, tunfd):
@@ -139,7 +153,7 @@ class Server:
         if data == b'\x00':
             if tunfd == INVALID_TUN:
                 # reconnect
-                self.udp.sendto(b'r', address)
+                self.udp_proxy.sendto(b'r', address)
             else:
                 self.updateLastTime(tunfd)
             return False
@@ -179,7 +193,7 @@ class Server:
             return False
         else:
             # send packet through the udp socket
-            self.udp.sendto(packet, address)
+            self.udp_proxy.sendto(packet, address)
             return True
 
 
@@ -194,7 +208,8 @@ class Server:
 
                 if key.data == "udp":
                     # receive data from udp socket
-                    data, address = self.udp.recvfrom(config.BUFFER_SIZE)
+                    data, address = self.udp_proxy.recvfrom(config.BUFFER_SIZE)
+
                     if DEBUG: print(utils.getCurrentTime() + 'from (%s:%s)' % (address, repr(data)))
                     
                     # resends the packet to App Server or Tunnel
@@ -246,8 +261,8 @@ class Server:
                         data = os.read(tunfd, config.BUFFER_SIZE)
                         # truncate four bytes ethernet frame
                         data = data[4:]
+                        self.udp_proxy.sendto(data, address)
 
-                        self.udp.sendto(data, address)
                         if DEBUG: print(utils.getCurrentTime() + 'to (%s:%s)' % (address, repr(data)))
                     except Exception:
                         continue

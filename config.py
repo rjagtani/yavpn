@@ -25,6 +25,7 @@ COLLECT_CYCLE = 5
 KEEPALIVE = 10
 EXPIRE_TIME = 60
 
-
+# Encryption Config
+FERNET_KEY = b'qaOMUbtW4M31PDU8p0LdwTdgE22coHm00RGOFK-FSQs='
 # Debug Mode
 DEBUG = True
