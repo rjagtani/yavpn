@@ -6,7 +6,7 @@ class PacketManager():
         # get hostname
         self.host = socket.gethostbyname(socket.gethostname())
         # TODO which line should be in effect
-        self.host = "192.168.1.72"
+        self.host = "192.168.1.74"
 
     def getSrcIPandDstIP(self, data):
         if len(data) == 0:

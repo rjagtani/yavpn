@@ -11,13 +11,15 @@ import config
 import utils
 from route import RouteManager
 from packet import PacketManager
-
+from security import SecurityManager, UdpProxy
 DEBUG = config.DEBUG
 
 class Client():
     def __init__(self):
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp.settimeout(5)
+        self.securityManager = SecurityManager(config.FERNET_KEY)
+        self.udp_proxy = UdpProxy(self.udp, self.securityManager)
         self.selector = selectors.DefaultSelector()
         # TODO what does data="udp" mean
         self.selector.register(self.udp, selectors.EVENT_READ, data="udp")
@@ -26,10 +28,10 @@ class Client():
         self.packetManager = PacketManager()
 
     def connect(self):
-        self.udp.sendto(config.PASSWORD, self.to)
+        self.udp_proxy.sendto(config.PASSWORD, self.to)
         try:
             #obtain tun IP address
-            data, address = self.udp.recvfrom(config.BUFFER_SIZE)
+            data, address = self.udp_proxy.recvfrom(config.BUFFER_SIZE)
             localIP, peerIP = data.decode().split(';')
             self.localIP = localIP
             self.peerIP = peerIP
@@ -53,7 +55,7 @@ class Client():
     def keepAlive(self):
         while True:
             time.sleep(config.KEEPALIVE)
-            self.udp.sendto(b'\x00', self.to)
+            self.udp_proxy.sendto(b'\x00', self.to)
 
     def reconnect(self):
         self.selector.unregister(self.tunfd)
@@ -78,12 +80,12 @@ class Client():
                 events = self.selector.select(timeout=None)
             except KeyboardInterrupt:
                 # close connection
-                self.udp.sendto(b'e', self.to)
+                self.udp_proxy.sendto(b'e', self.to)
                 raise KeyboardInterrupt
 
             for key, mask in events:
                 if key.data == "udp":
-                    data, address = self.udp.recvfrom(config.BUFFER_SIZE)
+                    data, address = self.udp_proxy.recvfrom(config.BUFFER_SIZE)
                     srcIP, dstIP = self.packetManager.getSrcIPandDstIP(data)
                     print("srcIP, dstIP: ", srcIP, dstIP)
                     if dstIP is not None:
@@ -103,7 +105,8 @@ class Client():
                 else: # tunnel events
                     try:
                         data = os.read(self.tunfd, config.BUFFER_SIZE)
-                        self.udp.sendto(data, self.to)
+
+                        self.udp_proxy.sendto(data, self.to)
                         if DEBUG:
                             print(utils.getCurrentTime() + 'to (%s:%s)' % (self.to, repr(data)))
                     except OSError:
