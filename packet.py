@@ -3,10 +3,7 @@ import socket
 
 class PacketManager():
     def __init__(self):
-        # get hostname
-        self.host = socket.gethostbyname(socket.gethostname())
-        # TODO which line should be in effect
-        self.host = "192.168.1.105"
+        pass
 
     def getSrcIPandDstIP(self, data):
         if len(data) == 0:
@@ -19,28 +16,27 @@ class PacketManager():
         
         return pck['IP'].src, pck['IP'].dst
 
-    def refactorSourceIP(self, data, src=None):
+    def refactorSourceIP(self, data, src):
         if len(data) == 0:
-            return None, None
+            return None, None, None
         try:
             pck = IP(data)
         except Exception:
             print("Fail to src of the IP package: ", repr(data))
             return None
         
-        if src is None:
-            src = self.host
+        oldSrc = pck['IP'].src
+        oldDst = pck['IP'].dst
         pck['IP'].src = src
-        dst = pck['IP'].dst
 
         # recalculate checksum
         del pck['IP'].chksum
 
-        return raw(pck), dst
+        return raw(pck), oldSrc, oldDst
 
     def refactorDstIP(self, data, dst):
         if len(data) == 0:
-            return None
+            return None, None, None
 
         try:
             pck = IP(data)
@@ -48,10 +44,12 @@ class PacketManager():
             print("Fail to dest of the IP package: ", repr(data))
             return None
 
+        oldSrc = pck['IP'].src
+        oldDst = pck['IP'].dst
         pck['IP'].dst = dst
         
         # recalculate checksum
         del pck['IP'].chksum
         
-        return raw(pck)
+        return raw(pck), oldSrc, oldDst
 

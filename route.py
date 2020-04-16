@@ -7,7 +7,7 @@ class RouteManager():
         self.IPRoute = IPRoute()
         # get local NIC information
         self.getDefaultNetworkInfo()
-        print("SSSS: NIC:", self.NIC, " gw:", self.defaultGW, " devs: ", self.devs)
+        print("NIC:", self.NIC, " gw:", self.defaultGW, " devs: ", self.devs, " host IP: ", self.hostIP)
         
     def getNIC(self):
         return self.NIC
@@ -17,6 +17,9 @@ class RouteManager():
 
     def getDevices(self):
         return self.devs
+    
+    def gethostIP(self):
+        return self.hostIP
 
     def getDefaultNetworkInfo(self):
         self.devs = [link.get_attr('IFLA_IFNAME') for link in self.IPRoute.get_links()]
@@ -28,6 +31,11 @@ class RouteManager():
                 # default gw and NIC
                 self.NIC = self.devs[route.get_attr('RTA_OIF') - 1]
                 self.defaultGW = route.get_attr('RTA_GATEWAY')
+
+        # get host IP address
+        for address in self.IPRoute.get_addr(family=2):
+            if address['scope'] == 0:
+                self.hostIP = address.get_attr('IFA_ADDRESS')
 
     def restoreRouteTable(self):
         self.changeDefaultGW(gw=self.defaultGW, dev=self.NIC)

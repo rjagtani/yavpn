@@ -11,7 +11,8 @@ from threading import Thread
 
 import config
 import utils
-import packet
+from route import RouteManager
+from packet import PacketManager
 
 DEBUG = config.DEBUG
 
@@ -30,7 +31,9 @@ class Server:
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.udp, selectors.EVENT_READ, data="udp")
 
-        self.packetManager = packet.PacketManager()
+        self.packetManager = PacketManager()
+        self.routeManager = RouteManager()
+        self.hostIP = self.routeManager.gethostIP()
         print('Server listen on %s:%s' % (config.BIND_ADDRESS))
 
     def getTunfdByAddress(self, address):
@@ -157,7 +160,7 @@ class Server:
             return False
 
         # refactoring packet
-        packet, dst = self.packetManager.refactorSourceIP(data)
+        packet, _, dst = self.packetManager.refactorSourceIP(data, self.hostIP)
         if packet is None:
             return False
         else:
@@ -171,7 +174,7 @@ class Server:
 
         # refactoring packet
         tunAddress = self.getTunAddressByAddress(address)
-        packet = self.packetManager.refactorDstIP(data, tunAddress)
+        packet, _, _ = self.packetManager.refactorDstIP(data, tunAddress)
         if packet is None:
             return False
         else:
@@ -204,8 +207,8 @@ class Server:
                             # handle by TUN
                             if DEBUG: print("Write to Tunnel")
 
-                            # add four ether frame bytes
-                            tdata = b"\x00\x00\x08\x00" + data
+                            # add four bytes ethernet frame
+                            tdata = config.ETHERNET_FRAME_BYTES + data
                             os.write(tunfd, tdata)
                         except OSError:
                             if DEBUG: print("Error when try to write to tunfd: ", tunfd)
@@ -241,7 +244,7 @@ class Server:
                         tunfd = key.fileobj
                         address = self.getAddressByTunfd(tunfd)
                         data = os.read(tunfd, config.BUFFER_SIZE)
-                        # truncate four ehter frame bytes
+                        # truncate four bytes ethernet frame
                         data = data[4:]
 
                         self.udp.sendto(data, address)
