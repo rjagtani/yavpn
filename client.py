@@ -19,7 +19,6 @@ class Client():
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp.settimeout(5)
         self.selector = selectors.DefaultSelector()
-        # TODO what does data="udp" mean
         self.selector.register(self.udp, selectors.EVENT_READ, data="udp")
         self.to = SERVER_ADDRESS
         self.routeManager = RouteManager()
@@ -33,6 +32,7 @@ class Client():
             localIP, peerIP = data.decode().split(';')
             self.localIP = localIP
             self.peerIP = peerIP
+            print(localIP, peerIP)
 
             # create and register tunnel
             tunfd, tunName = utils.createTunnel()
@@ -41,9 +41,10 @@ class Client():
             utils.startTunnel(tunName, localIP, peerIP)
 
             # modify routing table
-            # TODO how does peerIP work in this scenario
+            NIC = self.routeManager.getNIC()
+            defaultGW = self.routeManager.getDefaultGW()
             self.routeManager.changeDefaultGW(peerIP, tunName)
-            self.routeManager.addHostRoute(self.to[0])
+            self.routeManager.addHostRoute(self.to[0], defaultGW, NIC)
 
             return tunfd
 
@@ -84,15 +85,14 @@ class Client():
             for key, mask in events:
                 if key.data == "udp":
                     data, address = self.udp.recvfrom(config.BUFFER_SIZE)
+                    # truncate f4our dummy bytes
+                    # pdata = data[4:]
                     srcIP, dstIP = self.packetManager.getSrcIPandDstIP(data)
                     print("srcIP, dstIP: ", srcIP, dstIP)
-                    if dstIP is not None:
-                        data = self.packetManager.refactorDstIP(data, self.localIP)
-                        data = b"\x00\x00\x00\x00" + data
 
                     try:
-
-                        os.write(self.tunfd, data)
+                        tdata = b"\x00\x00\x08\x00" + data
+                        os.write(self.tunfd, tdata)
                         if DEBUG:
                             print(utils.getCurrentTime() + 'from (%s:%s)' % (address, repr(data)))
                     except OSError:
@@ -103,6 +103,9 @@ class Client():
                 else: # tunnel events
                     try:
                         data = os.read(self.tunfd, config.BUFFER_SIZE)
+                        # truncate four ether frame bytes
+                        data = data[4:]
+                        
                         self.udp.sendto(data, self.to)
                         if DEBUG:
                             print(utils.getCurrentTime() + 'to (%s:%s)' % (self.to, repr(data)))
@@ -110,7 +113,10 @@ class Client():
                         continue
 
     def restoreConf(self):
-        self.routeManager.restoreDefaultGW()
+        NIC = self.routeManager.getNIC()
+        defaultGW = self.routeManager.getDefaultGW()
+        self.routeManager.changeDefaultGW(defaultGW, NIC)
+        self.routeManager.deleteHostRoute(self.to[0], defaultGW, NIC)
 
 
 if __name__ == '__main__':
