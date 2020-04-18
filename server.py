@@ -20,7 +20,6 @@ DEBUG = config.DEBUG
 # Contants
 INVALID_ADDRESS = -1
 INVALID_TUN = -1
-INVALID_SOCKET = -1
 
 class Server:
     def __init__(self):
@@ -36,10 +35,14 @@ class Server:
         self.tcpRaw.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
         self.tcpProxy = TCPProxy(self.hostIP, self.packetManager, self.tcpRaw, self.udp)
 
+        self.icmpRaw = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
+        self.icmpRaw.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+
         # selector to listen all 'coming in' events
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.udp, selectors.EVENT_READ, data="udp")
         self.selector.register(self.tcpRaw, selectors.EVENT_READ, data="tcpRaw")
+        self.selector.register(self.icmpRaw, selectors.EVENT_READ, data="icmpRaw")
 
         print('Server listen on %s:%s' % (config.BIND_ADDRESS))
 
@@ -54,20 +57,6 @@ class Server:
             if session["tunfd"] == tunfd:
                 return session["address"]
         return INVALID_ADDRESS
-
-    def getSocketByTunfd(self, tunfd):
-        for session in self.sessions:
-            if session["tunfd"] == tunfd:
-                return session["socket"]
-        return INVALID_SOCKET
-
-    def getAddressBySocket(self, socket):
-        for session in self.sessions:
-            if session["socket"]['icmp'] == socket \
-                or session["socket"]['tcp'] == socket \
-                or session["socket"]['udp'] == socket:
-                return session["address"]
-        return INVALID_ADDRESS
     
     def getTunAddressByAddress(self, address):
         for session in self.sessions:
@@ -80,9 +69,7 @@ class Server:
             tunfd, tunName = utils.createTunnel()
             tunAddress = config.IPRANGE.pop(0)
             utils.startTunnel(tunName, config.LOCAL_IP, tunAddress)
-            icmpSocket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
-            icmpSocket.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
-
+            
         except OSError as e:
             print("Error when create new session with address: ", address)
             print("Error message " + str(e))
@@ -94,17 +81,11 @@ class Server:
                 "tunfd": tunfd,
                 'address': address,
                 'tunAddress': tunAddress,
-                'socket': {
-                    'icmp': icmpSocket,
-                    'tcp': INVALID_SOCKET, 
-                    'udp': INVALID_SOCKET,
-                }, 
                 'lastTime': time.time()
             }
         )
         # register tunnel and raw socket
         self.selector.register(tunfd, selectors.EVENT_READ, data=tunName)
-        self.selector.register(icmpSocket, selectors.EVENT_READ, data="app")
 
         reply = "%s;%s" % (tunAddress, config.LOCAL_IP)
         self.udp.sendto(reply.encode(), address)
@@ -117,9 +98,6 @@ class Server:
         
         try:
             os.close(tunfd)
-            if del_session['socket']['icmp'] != INVALID_SOCKET: del_session['socket']['icmp'].close()
-            if del_session['socket']['tcp'] != INVALID_SOCKET: del_session['socket']['tcp'].close()
-            if del_session['socket']['udp'] != INVALID_SOCKET: del_session['socket']['udp'].close()
         except OSError:
             return False
 
@@ -128,11 +106,8 @@ class Server:
         
         try:
             self.selector.unregister(tunfd)
-            self.selector.unregister(del_session['socket']['icmp'])
-            self.selector.unregister(del_session['socket']['tcp'])
-            self.selector.unregister(del_session['socket']['udp'])
         except Exception:
-            print("Fail to unregister file: ", tunfd, del_session['socket'])
+            print("Fail to unregister TUN: ", tunfd)
             return False
         
         return True
@@ -170,45 +145,43 @@ class Server:
         else:
             if DEBUG:  print("Client %s:%s connection failed!" % address)
 
-    def forwardToAppServer(self, data, tunfd, address):
-        socket = self.getSocketByTunfd(tunfd)
-        if socket == INVALID_SOCKET:
-            return False
+    def forwardToAppServer(self, data, address):
+        # check packet type and send through socket
+        packetType = self.packetManager.getType(data)
 
-        else:
-            # check packet type and send through socket
-            packetType = self.packetManager.getType(data)
-            if packetType is None:
-                if DEBUG:  print("Fail to forward packet: ", repr(data))
-            elif packetType == self.packetManager.ICMP_TYPE:
-                # refactoring packet
-                packet, _, dst = self.packetManager.refactorSrcAndDstIP(data, self.hostIP, None)
-                if packet is None:
-                    return False
+        if packetType is None:
+            if DEBUG:  print("Fail to forward packet: ", repr(data))
 
-                socket['icmp'].sendto(packet, (dst, 0))
-            elif packetType == self.packetManager.TCP_TYPE:
-                self.tcpProxy.forwardToAppServer(packet, address)
-                pass
-            elif packetType == self.packetManager.UDP_TYPE:
-                pass
+        elif packetType == self.packetManager.ICMP_TYPE:
+            # refactoring packet
+            pck, _, dst = self.packetManager.refactorSrcAndDstIP(data, self.hostIP, None)
+            if pck is None: return False
 
-            return True
+            self.icmpRaw.sendto(pck, (dst, 0))
 
-    def forwardToClient(self, data, address):
-        if address == INVALID_ADDRESS:
-            return False
+        elif packetType == self.packetManager.TCP_TYPE:
+            self.tcpProxy.forwardToAppServer(data, address)
 
-        # refactoring packet
-        tunAddress = self.getTunAddressByAddress(address)
-        packet, _, _ = self.packetManager.refactorSrcAndDstIP(data, None, tunAddress)
-        if packet is None:
-            return False
-        else:
-            # send packet through the udp socket
-            self.udp.sendto(packet, address)
-            return True
+        elif packetType == self.packetManager.UDP_TYPE:
+            pass
 
+        return True
+
+    def forwardToAllClients(self, data):
+        for session in self.sessions:
+            tunAddress = session['tunAddress']
+            address = session['address']
+
+            # refactoring packet
+            pck, _, _ = self.packetManager.refactorSrcAndDstIP(data, None, tunAddress)
+
+            if pck is None:
+                return False
+            else:
+                # send packet through the udp socket
+                self.udp.sendto(pck, address)
+                
+        return True
 
     def runService(self):
         # start a thread for garbage collecting
@@ -252,19 +225,17 @@ class Server:
                     else:
                         # forward to the App Server
                         print("forward to App Server")
-                        if self.forwardToAppServer(data, tunfd, address):
+                        if self.forwardToAppServer(data, address):
                             if DEBUG: print(utils.getCurrentTime() + 'forward packet to App Server: %s' % (repr(data)))
                 
-                elif key.data == "app":
+                elif key.data == "icmpRaw":
                     # receive packets from the application server
                     socket = key.fileobj
                     data, address = socket.recvfrom(config.BUFFER_SIZE)
 
-                    # resend data to the client
-                    clientAddr = self.getAddressBySocket(socket)
-                    if self.forwardToClient(data, clientAddr):
+                    # resend data to all clients
+                    if self.forwardToAllClients(data):
                         if DEBUG: print(utils.getCurrentTime() + 'forward packet to Client: %s' % (repr(data)))
-                        pass
 
                 elif key.data == "tcpRaw":
                     # receive packets from the application server
@@ -275,8 +246,6 @@ class Server:
                     if self.tcpProxy.fowardToClient(data):
                         if DEBUG: print(utils.getCurrentTime() + 'forward packet to Client: %s' % (repr(data)))
                         pass
-                    else:
-                        print("------------ TCP RAW FAIL -----------------")
 
                 else:
                     try: 

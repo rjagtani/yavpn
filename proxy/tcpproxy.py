@@ -66,8 +66,10 @@ class TCPProxy(TransportLayerProxy):
             session = self.newSession(clientAddress, src, sport, dst, dport)
 
         # refactor the source port and source IP
-        pck, _, _ = self.packetManager.refactorSportAndDport(data, session['sSport'], None)
-        pck, _, _ = self.packetManager.refactorSrcAndDstIP(pck, self.hostIP, None)
+        pck, _, _ = self.packetManager.refactorSrcAndDstIP(data, self.hostIP, None)
+        pck, _, _ = self.packetManager.refactorSportAndDport(pck, session['sSport'], None)
+
+        IP(pck).show()
 
         self.toAppServer.sendto(pck, (dst, dport))
 
@@ -86,8 +88,8 @@ class TCPProxy(TransportLayerProxy):
             return False
         else:
             # refactor packet
-            pck, _, _ = self.packetManager.refactorSportAndDport(data, None, session['sport'])
-            pck, _, _ = self.packetManager.refactorSrcAndDstIP(pck, None, session['src'])
+            pck, _, _ = self.packetManager.refactorSrcAndDstIP(data, None, session['src'])
+            pck, _, _ = self.packetManager.refactorSportAndDport(pck, None, session['sport'])
 
             # TODO: TO BE DELETED
             print("session src ----- : ", session['src'])
