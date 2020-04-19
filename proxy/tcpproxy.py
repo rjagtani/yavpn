@@ -10,7 +10,7 @@ class TCPProxy(TransportLayerProxy):
 
     INVALID_SESSION = -1
 
-    def __init__(self, hostIP, packetManager: PacketManager, toAppServer:socket.socket, toClient:socket.socket):
+    def __init__(self, hostIP, packetManager: PacketManager, toAppServer:socket.socket, toClient):
         self.hostIP = hostIP
         self.packetManager = packetManager
         self.toAppServer = toAppServer
