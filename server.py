@@ -32,17 +32,18 @@ class Server:
         self.sessions = []
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp.bind(config.BIND_ADDRESS)
+        # encryption
+        self.securityManager = SecurityManager(config.FERNET_KEY)
+        self.udp_proxy = UdpProxy(self.udp, self.securityManager)
 
         self.tcpRaw = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
         self.tcpRaw.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
-        self.tcpProxy = TCPProxy(self.hostIP, self.packetManager, self.tcpRaw, self.udp)
+        self.tcpProxy = TCPProxy(self.hostIP, self.packetManager, self.tcpRaw, self.udp_proxy)
 
         self.icmpRaw = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
         self.icmpRaw.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
 
-        # encryption
-        self.securityManager = SecurityManager(config.FERNET_KEY)
-        self.udp_proxy = UdpProxy(self.udp, self.securityManager)
+
 
         # selector to listen all 'coming in' events
         self.selector = selectors.DefaultSelector()
