@@ -9,6 +9,7 @@ class PacketManager():
     def __init__(self):
         pass
 
+
     def getSrcIPandDstIP(self, data):
         if len(data) == 0:
             return None, None
