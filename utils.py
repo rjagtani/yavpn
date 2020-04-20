@@ -21,3 +21,12 @@ def startTunnel(tunName, localIP, peerIP):
     print("peer ip %s local ip %s" % (peerIP, localIP))
     os.popen('ifconfig %s %s dstaddr %s mtu %s up' %
                 (tunName, localIP, peerIP, config.MTU)).read()
+
+def disableTCPReset():
+    print("Diabling TCP RESET")
+    os.popen("iptables -A OUTPUT -p tcp --tcp-flags RST RST -j DROP").read()
+
+def enableTCPReset():
+    print("Enabling TCP RESET")
+    os.popen("iptables -D OUTPUT -p tcp --tcp-flags RST RST -j DROP").read()
+

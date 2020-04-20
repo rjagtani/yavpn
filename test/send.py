@@ -17,15 +17,20 @@ selector = selectors.DefaultSelector()
 selector.register(sck, selectors.EVENT_READ, data="raw")
 
 
-while True:
-    events = selector.select(timeout=None)
-    for key, mask in events:
+pck = IP(dst="google.com") / TCP(flags="R", sport = 30000, dport=80)
 
-        if key.data == "raw":
-            sck = key.fileobj
-            data, address = sck.recvfrom(1024)
-            print("Receive TCP packet: ", repr(data))
+sck.sendto(raw(pck), ("google.com", 80))
 
-            pck = IP(data)
-            pck.show()
+
+# while True:
+#     events = selector.select(timeout=None)
+#     for key, mask in events:
+
+#         if key.data == "raw":
+#             sck = key.fileobj
+#             data, address = sck.recvfrom(1024)
+#             print("Receive TCP packet: ", repr(data))
+
+#             pck = IP(data)
+#             pck.show()
 

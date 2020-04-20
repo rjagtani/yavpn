@@ -12,7 +12,9 @@ import utils
 from route import RouteManager
 from packet import PacketManager
 from security import SecurityManager, UdpProxy
+
 DEBUG = config.DEBUG
+VERBOSE = config.VERBOSE
 
 class Client():
     def __init__(self):
@@ -41,7 +43,7 @@ class Client():
             self.selector.register(tunfd, selectors.EVENT_READ, data = tunName)
             print('Local IP: %s, Peer IP: %s' % (localIP, peerIP))
             utils.startTunnel(tunName, localIP, peerIP)
-            time.sleep(1)
+            time.sleep(3)
 
             # modify routing table
             NIC = self.routeManager.getNIC()
@@ -91,7 +93,7 @@ class Client():
                 if key.data == "udp":
                     data, address = self.udp_proxy.recvfrom(config.BUFFER_SIZE)
                     srcIP, dstIP = self.packetManager.getSrcIPandDstIP(data)
-                    print("srcIP, dstIP: ", srcIP, dstIP)
+                    if VERBOSE > 0: print("srcIP, dstIP: ", srcIP, dstIP)
 
                     try:
                         # add four bytes ethernet frame
@@ -130,9 +132,15 @@ if __name__ == '__main__':
         client = Client()
         client.runService()
     except IndexError:
-        print('Usage: %s [remote_ip] [remote_port]' % sys.argv[0])
+        print('Usage: %s [VPN_server_ip] [VPN_server_port]' % sys.argv[0])
     except KeyboardInterrupt:
         if DEBUG:
             print('Restoring Default Configuration... ')
         client.restoreConf()
         print('Closing vpn client ...')
+    except Exception as e:
+        if DEBUG:
+            print('Restoring Default Configuration... ')
+        client.restoreConf()
+        print(e)
+        raise e

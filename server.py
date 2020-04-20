@@ -15,8 +15,9 @@ import utils
 from route import RouteManager
 from packet import PacketManager
 from proxy.tcpproxy import TCPProxy
+from proxy.udpproxy import UDPProxy
 
-
+VERBOSE = config.VERBOSE
 DEBUG = config.DEBUG
 
 # Contants
@@ -43,25 +44,22 @@ class Server:
         self.icmpRaw = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
         self.icmpRaw.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
 
+        self.udpRaw = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_UDP)
+        self.udpRaw.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
+        self.udpProxy = UDPProxy(self.hostIP, self.packetManager, self.tcpRaw, self.udp_proxy)
 
+        # Disable RESET packet
+        utils.disableTCPReset()
 
         # selector to listen all 'coming in' events
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.udp, selectors.EVENT_READ, data="udp")
         self.selector.register(self.tcpRaw, selectors.EVENT_READ, data="tcpRaw")
         self.selector.register(self.icmpRaw, selectors.EVENT_READ, data="icmpRaw")
+        self.selector.register(self.udpRaw, selectors.EVENT_READ, data="udpRaw")
 
         print('Server listen on %s:%s' % (config.BIND_ADDRESS))
 
-    # def initializeTcp(self):
-    #     ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    #     ssl_context.load_cert_chain('yavpn.pem', 'yavpn.key')
-    #     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    #     sock.bind(config.TCP_BIND_ADDRESS)
-    #     sock.listen(2)
-    #     secure_sock = ssl_context.wrap_socket(sock, server_side=True)
-    #     conn, address = secure_sock.accept()
-    #     return conn
     def getTunfdByAddress(self, address):
         for session in self.sessions:
             if session["address"] == address:
@@ -178,6 +176,7 @@ class Server:
             self.tcpProxy.forwardToAppServer(data, address)
 
         elif packetType == self.packetManager.UDP_TYPE:
+            self.udpProxy.forwardToAppServer(data, address)
             pass
 
         return True
@@ -215,7 +214,7 @@ class Server:
                     
                     # resends the packet to App Server or Tunnel
                     srcIP, dstIP = self.packetManager.getSrcIPandDstIP(data) 
-                    print("srcIP, dstIP: ", srcIP, dstIP)
+                    if VERBOSE > 0: print("srcIP, dstIP: ", srcIP, dstIP)
 
                     tunfd = self.getTunfdByAddress(address)
                     if dstIP == config.LOCAL_IP:
@@ -232,7 +231,7 @@ class Server:
                                 
                     elif dstIP is None:
                         # control message, handled by the server
-                        print("Control Message")
+                        if DEBUG: print("Control Message")
                         if self.authenticate(tunfd, data, address) and tunfd == -1:  
                             # authentication succeeds, create a new session      
                             self.createSession(address)
@@ -240,7 +239,7 @@ class Server:
 
                     else:
                         # forward to the App Server
-                        print("forward to App Server")
+                        if VERBOSE > 0: print("forward to App Server")
                         if self.forwardToAppServer(data, address):
                             if DEBUG: print(utils.getCurrentTime() + 'forward packet to App Server: %s' % (repr(data)))
                 
@@ -261,10 +260,19 @@ class Server:
                     # forward data to the client
                     if self.tcpProxy.fowardToClient(data):
                         if DEBUG: print(utils.getCurrentTime() + 'forward packet to Client: %s' % (repr(data)))
-                        pass
+
+                elif key.data == "udpRaw":
+                    # receive packets from the application server
+                    socket = key.fileobj
+                    data, address = socket.recvfrom(config.BUFFER_SIZE)
+
+                    # forward data to the client
+                    if self.udpProxy.fowardToClient(data):
+                        if DEBUG: print(utils.getCurrentTime() + 'forward packet to Client: %s' % (repr(data)))
 
                 else:
                     try: 
+                        if VERBOSE > 0: print("forward to VPN Client")
                         tunfd = key.fileobj
                         address = self.getAddressByTunfd(tunfd)
                         data = os.read(tunfd, config.BUFFER_SIZE)
@@ -281,4 +289,10 @@ if __name__ == '__main__':
     try:
         Server().runService()
     except KeyboardInterrupt:
+        print('Enabling TCP RESET')
+        utils.enableTCPReset()
         print('Closing vpn server ...')
+    except Error as e:
+        print('Enabling TCP RESET')
+        utils.enableTCPReset()
+        raise e

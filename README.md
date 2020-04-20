@@ -1,3 +1,6 @@
+# YAVPN
+A point-to-point VPN Client-Server program, writen in Python3. 
+
 ## Run VPN
 You should run the server and client on different machines.
 You may create two VMs with Network Bridge mode so that both of them has static IP
@@ -12,9 +15,13 @@ You may create two VMs with Network Bridge mode so that both of them has static 
 You can apply a simple test to check if the program runs properly. 
 - on client machine `ping 10.0.0.1 -c 4` which is the server machine
 - you should receive ping replies from the server
-- you should see 'in and out' ICMP packets on both Client and Server console.
 
-## Debug Tools
+- on client machine `ping 8.8.8.8 -c 4` which is the google DNS server
+- you should receive ping replies from the server
+
+Also, you can check your route table that all your traffic sends through the TUN device
+
+## Useful Tools
 
 ### Route table
 - **route**
