@@ -3,7 +3,11 @@ A Client-Server VPN program and TCP proxy, writen in Python3.
 
 ## Install
 You should run the `server.py` and `client.py` on different machines.
-For a simple local test, you may create two VMs with Network Bridge mode so that both of them has its fixed IP
+
+### Virtual Machines
+For a simple local test, You can run on the **Ubuntu-16.04** Virtual Machine locally. 
+- VM Image: You can use the **Seed Lab Ubuntu-16.04 Image**, link: https://seedsecuritylabs.org/lab_env.html. The official user manual: https://seedsecuritylabs.org/Labs_16.04/Documents/SEEDVM_VirtualBoxManual.pdf
+- Network Setting: Each VM needs a fixed and unique IP address. You can the VM in **Oracle VM VirtualBox** with the *Network Bridge* Network Setting. 
 
 ### Requirements
 The VPN program runs on Python3.5+, you can choose to use the *virtual python environment* in the `venv` directory, or install 
