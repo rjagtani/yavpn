@@ -292,7 +292,7 @@ if __name__ == '__main__':
         print('Enabling TCP RESET')
         utils.enableTCPReset()
         print('Closing vpn server ...')
-    except Error as e:
+    except Exception as e:
         print('Enabling TCP RESET')
         utils.enableTCPReset()
         raise e
