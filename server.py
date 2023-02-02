@@ -10,7 +10,7 @@ from fcntl import ioctl
 from security import SecurityManager, UdpProxy
 from threading import Thread
 
-import brcypt
+import hashlib
 import config
 import utils
 from route import RouteManager
@@ -154,7 +154,17 @@ class Server:
             if self.deleteSessionByTunfd(tunfd):
                 if DEBUG: print("Client %s:%s disconnect" % address)
             return False
-        if bcrypt.checkpw(data, config.PASSWORD['client1']):
+        hash = config.PASSWORD['client1']
+        salt = hash[:32]
+        key = hash[32:]
+        new_key = hashlib.pbkdf2_hmac(
+            'sha256',
+            data.encode('utf-8'),  # Convert the password to bytes
+            salt,
+            100000
+        )
+
+        if new_key == key:
             return True
 
         else:
