@@ -35,7 +35,7 @@ class Client():
         #encrypt client password
         #auth_message = sock.recv(65444)
         #auth_message = auth_message.decode('utf-8')
-        self.udp_proxy.sendto(client_password, self.serverAddress)
+        self.udp_proxy.sendto(client_password.encode('utf-8'), self.serverAddress)
 
         try:
             #obtain tun IP address

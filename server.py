@@ -159,7 +159,7 @@ class Server:
         key = hash[32:]
         new_key = hashlib.pbkdf2_hmac(
             'sha256',
-            data.encode('utf-8'),  # Convert the password to bytes
+            data,  # Convert the password to bytes
             salt,
             100000
         )
