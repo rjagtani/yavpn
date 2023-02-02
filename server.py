@@ -10,6 +10,7 @@ from fcntl import ioctl
 from security import SecurityManager, UdpProxy
 from threading import Thread
 
+import brcypt
 import config
 import utils
 from route import RouteManager
@@ -153,7 +154,7 @@ class Server:
             if self.deleteSessionByTunfd(tunfd):
                 if DEBUG: print("Client %s:%s disconnect" % address)
             return False
-        if data == config.PASSWORD:
+        if bcrypt.checkpw(data, config.PASSWORD['client1']):
             return True
 
         else:

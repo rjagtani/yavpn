@@ -7,6 +7,7 @@ import selectors
 from fcntl import ioctl
 from threading import Thread
 
+import bcrypt
 import config
 import utils
 from route import RouteManager
@@ -29,7 +30,13 @@ class Client():
         self.packetManager = PacketManager()
 
     def connect(self):
-        self.udp_proxy.sendto(config.PASSWORD, self.serverAddress)
+        client_password = input("Enter Password:")
+        client_password.encode('utf-8')
+        hashedPassword = bcrypt.hashpw(client_password, bcrypt.gensalt(10))
+        #encrypt client password
+        #auth_message = sock.recv(65444)
+        #auth_message = auth_message.decode('utf-8')
+        self.udp_proxy.sendto(hashedPassword, self.serverAddress)
 
         try:
             #obtain tun IP address

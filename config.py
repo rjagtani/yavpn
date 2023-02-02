@@ -3,7 +3,8 @@
 from ipaddress import ip_network
 
 # Authentication
-PASSWORD = b'4fb88ca224e'
+PASSWORD = {'client1' : 123, 'client2': 456}
+#PASSWORD = b'4fb88ca224e'
 
 # IP Config
 BIND_ADDRESS = '0.0.0.0',2003
