@@ -35,7 +35,7 @@ class Server:
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp.bind(config.BIND_ADDRESS)
         # encryption
-        self.securityManager = SecurityManager(config.FERNET_KEY)
+        self.securityManager = SecurityManager()
         self.udp_proxy = UdpProxy(self.udp, self.securityManager)
 
         self.tcpRaw = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)

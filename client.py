@@ -20,7 +20,7 @@ class Client():
     def __init__(self):
         self.udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp.settimeout(5)
-        self.securityManager = SecurityManager(config.FERNET_KEY)
+        self.securityManager = SecurityManager()
         self.udp_proxy = UdpProxy(self.udp, self.securityManager)
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.udp, selectors.EVENT_READ, data="udp")
