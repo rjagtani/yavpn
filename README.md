@@ -8,10 +8,9 @@ You should run the server.py and client.py on two different Virtual Machines.
 For a simple local test, You can run on the Ubuntu-16.04 Virtual Machine locally. 
 - VM Image: You can get Ubuntu 16.04.7 LTS Image using the following link: https://releases.ubuntu.com/16.04/.
 - Setting up Virtual Box: You can use the following documentation to set up your VM to ensure proper connectivity: https://seedsecuritylabs.org/Labs_16.04/Documents/SEEDVM_VirtualBoxManual.pdf
-- VM Image: The official user manual: https://seedsecuritylabs.org/Labs_16.04/Documents/SEEDVM_VirtualBoxManual.pdf
 - Network Setting: Each VM needs a fixed and unique IP address. You can the VM in Oracle VM VirtualBox with the *Network Bridge* Network Setting. 
-- (Edit, document says something else) Before running the program, it's crucial to properly configure the network adapter. Please follow these steps: 
-  - Attach the network adapter to a bridged adapter. 
+- Before running the program, it's crucial to properly configure the network adapter. Please follow these steps: 
+  - Attach the network adapter to a bridged adapter. (even though the user manual says something else!) 
   - Set the Promiscuous mode to "Allow VMs".
  
 
@@ -24,12 +23,11 @@ The VPN software operates with Python3.5. You have the option to either utilize 
 - Activate the virtual env: source ./venv/bin/activate
 - Run VPN Server: python3 server.py
 - Run VPN Client: python3 client.py <server's IP> 2003
-    - If you want to get the Server's IP, run this command ifconfig
+    - If you want to get the Server's IP, run the command ifconfig
+    - You will be prompted for a password, enter the following password - 'a1b22c333d4444'
 
 ### Adjusting Configuration Variables :
 - To select the preferred encryption algorithm, simply modify the PREFERENCE variable located in the config.py file. Depending on your specific needs, choose the encryption algorithm that best suits your requirements. Select 1 for Fernet and 2 for RC4
-
-
 
 ## Useful Tools
 
